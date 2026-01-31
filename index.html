@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Garmin Dive</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1 id="header-title">Garmin Dive</h1>
+    <button id="btn-back" class="header-btn hidden">&larr;</button>
+  </header>
+
+  <!-- DIVE LIST VIEW -->
+  <main id="view-list">
+    <div id="drop-zone">
+      <p>Glisser un fichier .FIT ici</p>
+      <p>ou</p>
+      <label class="btn" for="file-input">Importer un fichier FIT</label>
+      <input type="file" id="file-input" accept=".fit" hidden>
+    </div>
+    <div id="dive-list"></div>
+  </main>
+
+  <!-- DIVE DETAIL VIEW -->
+  <section id="view-detail" class="hidden">
+    <div id="dive-summary" class="card"></div>
+    <div class="card chart-card">
+      <div class="chart-header">
+        <h3>Profil de plongée</h3>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-color-speed">
+          <span class="toggle-label">Couleur vitesse</span>
+        </label>
+      </div>
+      <div class="chart-container">
+        <canvas id="chart-depth"></canvas>
+      </div>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-header">
+        <h3>Vitesse de remontée</h3>
+        <button id="btn-reset-zoom" class="btn-small">Reset zoom</button>
+      </div>
+      <div class="chart-container">
+        <canvas id="chart-ascent"></canvas>
+      </div>
+    </div>
+    <div id="cursor-info" class="card">
+      <div id="cursor-single">
+        <span id="cursor-time"></span>
+        <span id="cursor-depth"></span>
+        <span id="cursor-temp"></span>
+        <span id="cursor-ascent-rate"></span>
+      </div>
+      <div id="cursor-dual" class="hidden">
+        <div class="dual-row">
+          <span id="dual-t1"></span>
+          <span id="dual-d1"></span>
+          <span id="dual-t2"></span>
+          <span id="dual-d2"></span>
+        </div>
+        <div class="dual-row dual-delta">
+          <span id="dual-dt"></span>
+          <span id="dual-dd"></span>
+          <span id="dual-speed"></span>
+        </div>
+      </div>
+    </div>
+    <button id="btn-delete" class="btn btn-danger">Supprimer cette plongée</button>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
