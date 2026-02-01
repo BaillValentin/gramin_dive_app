@@ -15,6 +15,7 @@ let allDepths = [];
 let allAscentMpm = [];
 let allAscentColors = [];
 let allAscentRates = [];
+let allDisplayLabels = [];
 
 // Cursor state
 let cursor1Idx = null;
@@ -141,6 +142,10 @@ function depthTooltipConfig() {
     borderColor: '#00b4d8',
     borderWidth: 1,
     callbacks: {
+      title: items => {
+        const i = Math.round(items[0]?.parsed?.x ?? 0);
+        return allDisplayLabels[i] ?? '';
+      },
       label: ctx => `${ctx.parsed.y?.toFixed(1)} m`,
     },
   };
@@ -154,6 +159,10 @@ function ascentTooltipConfig() {
     borderColor: '#ff6b35',
     borderWidth: 1,
     callbacks: {
+      title: items => {
+        const i = Math.round(items[0]?.parsed?.x ?? 0);
+        return allDisplayLabels[i] ?? '';
+      },
       label: ctx => {
         const v = ctx.parsed.y;
         if (v == null) return '';
@@ -203,7 +212,7 @@ export function renderCharts(dive) {
   clearCursorDisplay();
 
   allLabels = dive.samples.map((s, i) => i);
-  const displayLabels = dive.samples.map(s => {
+  allDisplayLabels = dive.samples.map(s => {
     const m = Math.floor(s.elapsed / 60);
     const sec = s.elapsed % 60;
     return `${m}:${sec.toString().padStart(2, '0')}`;
@@ -221,7 +230,7 @@ export function renderCharts(dive) {
       maxTicksLimit: 8,
       callback: (val) => {
         const i = Math.round(val);
-        return i >= 0 && i < displayLabels.length ? displayLabels[i] : '';
+        return i >= 0 && i < allDisplayLabels.length ? allDisplayLabels[i] : '';
       }
     },
     grid: gridVisible ? { color: '#ffffff10' } : { display: false },
@@ -585,4 +594,5 @@ export function destroyCharts() {
   allAscentMpm = [];
   allAscentColors = [];
   allAscentRates = [];
+  allDisplayLabels = [];
 }
