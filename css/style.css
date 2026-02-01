@@ -224,12 +224,47 @@ header h1 {
 
 .btn-small:active { background: #ffffff10; }
 
+/* Mode bar */
+.mode-bar {
+  display: flex;
+  gap: 0;
+  margin: 0 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--text-dim);
+}
+
+.mode-btn {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text-dim);
+  border: none;
+  padding: 10px 0;
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.mode-btn + .mode-btn {
+  border-left: 1px solid var(--text-dim);
+}
+
+.mode-btn.active {
+  background: var(--blue);
+  color: #fff;
+}
+
 /* Zoom controls */
 .zoom-controls {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
+}
+
+.zoom-controls.hidden-soft {
+  display: none;
 }
 
 .zoom-controls input[type="range"] {

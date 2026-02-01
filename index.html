@@ -51,9 +51,16 @@
       </div>
     </div>
 
-    <!-- Zoom controls -->
-    <div class="zoom-controls">
-      <button id="btn-zoom-out" class="btn-small">−</button>
+    <!-- Mode selector -->
+    <div class="mode-bar">
+      <button class="mode-btn active" data-mode="zoom">Zoom</button>
+      <button class="mode-btn" data-mode="cursor1">1 Curseur</button>
+      <button class="mode-btn" data-mode="cursor2">2 Curseurs</button>
+    </div>
+
+    <!-- Zoom controls (visible only in zoom mode) -->
+    <div id="zoom-controls" class="zoom-controls">
+      <button id="btn-zoom-out" class="btn-small">&minus;</button>
       <input type="range" id="zoom-slider" min="0" max="100" value="0">
       <button id="btn-zoom-in" class="btn-small">+</button>
       <button id="btn-zoom-reset" class="btn-small">Reset</button>
