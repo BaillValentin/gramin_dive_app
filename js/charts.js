@@ -135,13 +135,32 @@ function syncZoom(source, target) {
 // --- Tooltip config ---
 function depthTooltipConfig() {
   return {
-    enabled: false, // We handle display via cursor info bar
+    enabled: true,
+    backgroundColor: '#16213e',
+    titleColor: '#00b4d8',
+    bodyColor: '#e0e0e0',
+    borderColor: '#00b4d8',
+    borderWidth: 1,
+    callbacks: {
+      label: ctx => `${ctx.parsed.y?.toFixed(1)} m`,
+    },
   };
 }
 
 function ascentTooltipConfig() {
   return {
-    enabled: false,
+    enabled: true,
+    backgroundColor: '#16213e',
+    bodyColor: '#e0e0e0',
+    borderColor: '#ff6b35',
+    borderWidth: 1,
+    callbacks: {
+      label: ctx => {
+        const v = ctx.parsed.y;
+        if (v == null) return '';
+        return `${v.toFixed(1)} m/min`;
+      },
+    },
   };
 }
 
@@ -435,7 +454,6 @@ function setupMouseInteraction(dive) {
       placeCursor(idx, dive);
     });
 
-    canvas.addEventListener('dblclick', () => clearCursors());
   });
 }
 
