@@ -1,13 +1,25 @@
 /**
  * Chart.js dive profile and ascent rate charts.
- * Touch: long-press for cursors, pinch to zoom (via Hammer.js).
+ * Manual zoom via buttons/slider. Touch: long-press for cursors.
+ * No external plugins required (no Hammer.js, no chartjs-plugin-zoom).
  */
 
 let depthChart = null;
 let ascentChart = null;
 let currentDive = null;
 
-// Cursor state
+// Full data arrays (unsliced)
+let allLabels = [];
+let allDepths = [];
+let allAscentMpm = [];
+let allAscentColors = [];
+let allAscentRates = []; // raw m/s for segment coloring
+
+// Zoom state
+let zoomStart = 0;
+let zoomEnd = 0; // exclusive index into allLabels
+
+// Cursor state (indices into the FULL data, not the sliced view)
 let cursor1Idx = null;
 let cursor2Idx = null;
 
@@ -25,28 +37,15 @@ function speedColor(mpm) {
   return '#06d6a0';
 }
 
-function buildSegmentColors(ascentRates) {
+function buildSegmentColors() {
   return {
     borderColor: ctx => {
-      const idx = ctx.p0DataIndex;
-      const r = ascentRates[idx];
+      const localIdx = ctx.p0DataIndex;
+      const globalIdx = zoomStart + localIdx;
+      const r = allAscentRates[globalIdx];
       return speedColor(r != null ? r * 60 : null);
     },
   };
-}
-
-// --- Get data index from pixel X on a chart ---
-function getIndexFromX(chart, clientX) {
-  const rect = chart.canvas.getBoundingClientRect();
-  const x = clientX - rect.left;
-  const { left, right } = chart.chartArea;
-  if (x < left || x > right) return null;
-
-  const scale = chart.scales.x;
-  const value = scale.getValueForPixel(x);
-  const idx = Math.round(value);
-  if (idx < 0 || idx >= currentDive.samples.length) return null;
-  return idx;
 }
 
 // --- Crosshair + cursor lines plugin ---
@@ -57,6 +56,7 @@ const crosshairPlugin = {
     if (!chartArea) return;
     const { top, bottom } = chartArea;
 
+    // Hover crosshair
     const actives = chart.getActiveElements();
     if (actives.length) {
       const x = actives[0].element.x;
@@ -71,16 +71,18 @@ const crosshairPlugin = {
       ctx.restore();
     }
 
-    if (cursor1Idx != null) drawCursorLine(chart, cursor1Idx, '#ff6b35');
-    if (cursor2Idx != null) drawCursorLine(chart, cursor2Idx, '#00b4d8');
+    // Cursor lines (convert global index to local)
+    if (cursor1Idx != null) drawCursorLine(chart, cursor1Idx - zoomStart, '#ff6b35');
+    if (cursor2Idx != null) drawCursorLine(chart, cursor2Idx - zoomStart, '#00b4d8');
   }
 };
 
-function drawCursorLine(chart, idx, color) {
+function drawCursorLine(chart, localIdx, color) {
   const meta = chart.getDatasetMeta(0);
-  if (!meta.data[idx]) return;
+  if (localIdx < 0 || localIdx >= meta.data.length) return;
+  if (!meta.data[localIdx]) return;
   const { ctx, chartArea: { top, bottom } } = chart;
-  const x = meta.data[idx].x;
+  const x = meta.data[localIdx].x;
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(x, top);
@@ -94,28 +96,94 @@ function drawCursorLine(chart, idx, color) {
 
 Chart.register(crosshairPlugin);
 
-// --- Zoom options (synced) ---
-function zoomOptions(otherChartGetter) {
-  return {
-    zoom: {
-      wheel: { enabled: true },
-      pinch: { enabled: true },
-      mode: 'x',
-      onZoom: ({ chart }) => syncZoom(chart, otherChartGetter()),
-    },
-    pan: {
-      enabled: true,
-      mode: 'x',
-      onPan: ({ chart }) => syncZoom(chart, otherChartGetter()),
-    },
-  };
+// --- Get global data index from pixel X ---
+function getGlobalIndexFromX(chart, clientX) {
+  const rect = chart.canvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const { left, right } = chart.chartArea;
+  if (x < left || x > right) return null;
+
+  const scale = chart.scales.x;
+  const localIdx = Math.round(scale.getValueForPixel(x));
+  const visibleLen = zoomEnd - zoomStart;
+  if (localIdx < 0 || localIdx >= visibleLen) return null;
+  return zoomStart + localIdx;
 }
 
-function syncZoom(source, target) {
-  if (!target) return;
-  target.options.scales.x.min = source.options.scales.x.min;
-  target.options.scales.x.max = source.options.scales.x.max;
-  target.update('none');
+// --- Zoom logic (data slicing) ---
+function applyZoom() {
+  if (!depthChart || !ascentChart) return;
+  const start = zoomStart;
+  const end = zoomEnd;
+
+  const slicedLabels = allLabels.slice(start, end);
+  const slicedDepths = allDepths.slice(start, end);
+  const slicedAscent = allAscentMpm.slice(start, end);
+  const slicedAscentColors = allAscentColors.slice(start, end);
+
+  depthChart.data.labels = slicedLabels;
+  depthChart.data.datasets[0].data = slicedDepths;
+
+  ascentChart.data.labels = slicedLabels;
+  ascentChart.data.datasets[0].data = slicedAscent;
+  ascentChart.data.datasets[0].backgroundColor = slicedAscentColors;
+
+  depthChart.update('none');
+  ascentChart.update('none');
+}
+
+function setupZoomControls() {
+  const slider = document.getElementById('zoom-slider');
+  const btnIn = document.getElementById('btn-zoom-in');
+  const btnOut = document.getElementById('btn-zoom-out');
+  const btnReset = document.getElementById('btn-zoom-reset');
+
+  if (!slider) return;
+
+  // Zoom level: 0 = full view, 100 = max zoom (show ~10% of data)
+  let zoomLevel = 0;
+
+  function applyFromSliderAndLevel() {
+    const total = allLabels.length;
+    if (total === 0) return;
+
+    // Visible window size: from 100% down to 10%
+    const fraction = 1 - (zoomLevel / 100) * 0.9;
+    const windowSize = Math.max(10, Math.round(total * fraction));
+
+    // Slider value determines the scroll position within the data
+    const maxStart = total - windowSize;
+    const start = Math.round((slider.value / 100) * maxStart);
+
+    zoomStart = Math.max(0, start);
+    zoomEnd = Math.min(total, zoomStart + windowSize);
+    applyZoom();
+  }
+
+  slider.addEventListener('input', applyFromSliderAndLevel);
+
+  btnIn.addEventListener('click', () => {
+    zoomLevel = Math.min(100, zoomLevel + 15);
+    applyFromSliderAndLevel();
+  });
+
+  btnOut.addEventListener('click', () => {
+    zoomLevel = Math.max(0, zoomLevel - 15);
+    applyFromSliderAndLevel();
+  });
+
+  btnReset.addEventListener('click', () => {
+    zoomLevel = 0;
+    slider.value = 0;
+    zoomStart = 0;
+    zoomEnd = allLabels.length;
+    applyZoom();
+  });
+
+  // Store so we can access from pinch zoom
+  slider._zoomLevel = () => zoomLevel;
+  slider._setZoomLevel = v => { zoomLevel = v; };
+  slider._applyFromSliderAndLevel = applyFromSliderAndLevel;
 }
 
 // --- Main render ---
@@ -126,14 +194,19 @@ export function renderCharts(dive) {
   cursor2Idx = null;
   showSingleCursor();
 
-  const labels = dive.samples.map(s => {
+  allLabels = dive.samples.map(s => {
     const m = Math.floor(s.elapsed / 60);
     const sec = s.elapsed % 60;
     return `${m}:${sec.toString().padStart(2, '0')}`;
   });
 
-  const depths = dive.samples.map(s => s.depth ?? null);
-  const ascentRates = dive.samples.map(s => s.ascentRate ?? null);
+  allDepths = dive.samples.map(s => s.depth ?? null);
+  allAscentRates = dive.samples.map(s => s.ascentRate ?? null);
+  allAscentMpm = allAscentRates.map(r => r != null ? r * 60 : null);
+  allAscentColors = allAscentMpm.map(mpm => speedColor(mpm));
+
+  zoomStart = 0;
+  zoomEnd = allLabels.length;
 
   // --- Depth chart ---
   const ctxDepth = document.getElementById('chart-depth').getContext('2d');
@@ -144,10 +217,10 @@ export function renderCharts(dive) {
   depthChart = new Chart(ctxDepth, {
     type: 'line',
     data: {
-      labels,
+      labels: allLabels,
       datasets: [{
         label: 'Profondeur (m)',
-        data: depths,
+        data: allDepths,
         borderColor: '#00b4d8',
         backgroundColor: gradient,
         borderWidth: 2,
@@ -161,6 +234,7 @@ export function renderCharts(dive) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: {
@@ -177,24 +251,21 @@ export function renderCharts(dive) {
       plugins: {
         legend: { display: false },
         tooltip: { enabled: false },
-        zoom: zoomOptions(() => ascentChart),
       },
     },
   });
 
   // --- Ascent rate chart ---
   const ctxAscent = document.getElementById('chart-ascent').getContext('2d');
-  const ascentMpm = ascentRates.map(r => r != null ? r * 60 : null);
-  const ascentColors = ascentMpm.map(mpm => speedColor(mpm));
 
   ascentChart = new Chart(ctxAscent, {
     type: 'bar',
     data: {
-      labels,
+      labels: allLabels,
       datasets: [{
         label: 'Vitesse (m/min)',
-        data: ascentMpm,
-        backgroundColor: ascentColors,
+        data: allAscentMpm,
+        backgroundColor: allAscentColors,
         borderWidth: 0,
         barPercentage: 1.0,
         categoryPercentage: 1.0,
@@ -203,6 +274,7 @@ export function renderCharts(dive) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: {
@@ -217,25 +289,23 @@ export function renderCharts(dive) {
       plugins: {
         legend: { display: false },
         tooltip: { enabled: false },
-        zoom: zoomOptions(() => depthChart),
       },
     },
   });
 
   setupMouseSync(dive);
   setupTouchCursors(dive);
-  setupToggleColorSpeed(ascentRates);
-  setupResetZoom();
+  setupToggleColorSpeed();
+  setupZoomControls();
 }
 
 // --- Mouse (desktop) ---
 function setupMouseSync(dive) {
   [depthChart, ascentChart].forEach((source, i) => {
-    const target = [depthChart, ascentChart][1 - i];
     const canvas = source.canvas;
 
     canvas.addEventListener('mousemove', e => {
-      const idx = getIndexFromX(source, e.clientX);
+      const idx = getGlobalIndexFromX(source, e.clientX);
       if (idx != null) {
         setActiveOnBoth(idx);
         if (cursor2Idx == null) updateCursorInfo(dive.samples[idx]);
@@ -247,7 +317,7 @@ function setupMouseSync(dive) {
     });
 
     canvas.addEventListener('click', e => {
-      const idx = getIndexFromX(source, e.clientX);
+      const idx = getGlobalIndexFromX(source, e.clientX);
       if (idx != null) placeCursor(idx, dive);
     });
 
@@ -275,9 +345,8 @@ function setupTouchCursors(dive) {
         longPressActive = true;
         if (navigator.vibrate) navigator.vibrate(30);
 
-        const idx = getIndexFromX(chart, t.clientX);
+        const idx = getGlobalIndexFromX(chart, t.clientX);
         if (idx != null) {
-          // Start fresh or keep adding
           if (cursor1Idx != null && cursor2Idx != null) {
             cursor1Idx = idx;
             cursor2Idx = null;
@@ -293,22 +362,20 @@ function setupTouchCursors(dive) {
 
     canvas.addEventListener('touchmove', e => {
       if (!longPressActive) {
-        // Check if moved too much -> cancel long press
         if (e.touches.length === 1) {
           const t = e.touches[0];
           if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
             cancelLongPress();
           }
         }
-        return; // Don't preventDefault — let scroll/zoom work
+        return;
       }
 
-      // Long press active — we own this gesture
       e.preventDefault();
       e.stopPropagation();
 
       if (e.touches.length === 1) {
-        const idx = getIndexFromX(chart, e.touches[0].clientX);
+        const idx = getGlobalIndexFromX(chart, e.touches[0].clientX);
         if (idx != null) {
           cursor1Idx = idx;
           cursor2Idx = null;
@@ -317,8 +384,8 @@ function setupTouchCursors(dive) {
           updateCursorInfo(dive.samples[idx]);
         }
       } else if (e.touches.length === 2) {
-        const idx1 = getIndexFromX(chart, e.touches[0].clientX);
-        const idx2 = getIndexFromX(chart, e.touches[1].clientX);
+        const idx1 = getGlobalIndexFromX(chart, e.touches[0].clientX);
+        const idx2 = getGlobalIndexFromX(chart, e.touches[1].clientX);
         if (idx1 != null) cursor1Idx = idx1;
         if (idx2 != null) cursor2Idx = idx2;
         updateDualCursorUI(dive);
@@ -340,13 +407,14 @@ function setupTouchCursors(dive) {
     });
   });
 
-  // Tap cursor info to clear
   document.getElementById('cursor-info').addEventListener('click', () => clearCursors());
 }
 
 // --- Helpers ---
-function setActiveOnBoth(idx) {
-  const el = [{ datasetIndex: 0, index: idx }];
+function setActiveOnBoth(globalIdx) {
+  const localIdx = globalIdx - zoomStart;
+  if (localIdx < 0 || localIdx >= (zoomEnd - zoomStart)) return;
+  const el = [{ datasetIndex: 0, index: localIdx }];
   if (depthChart) { depthChart.setActiveElements(el); depthChart.update('none'); }
   if (ascentChart) { ascentChart.setActiveElements(el); ascentChart.update('none'); }
 }
@@ -445,7 +513,7 @@ function updateCursorInfo(sample) {
 }
 
 // --- Toggle color-by-speed ---
-function setupToggleColorSpeed(ascentRates) {
+function setupToggleColorSpeed() {
   const toggle = document.getElementById('toggle-color-speed');
   if (!toggle) return;
   const legend = document.getElementById('speed-legend');
@@ -453,7 +521,7 @@ function setupToggleColorSpeed(ascentRates) {
     if (!depthChart) return;
     const ds = depthChart.data.datasets[0];
     if (toggle.checked) {
-      ds.segment = buildSegmentColors(ascentRates);
+      ds.segment = buildSegmentColors();
       ds.borderWidth = 3;
       if (legend) legend.classList.remove('hidden');
     } else {
@@ -466,16 +534,6 @@ function setupToggleColorSpeed(ascentRates) {
   });
 }
 
-// --- Reset zoom ---
-function setupResetZoom() {
-  const btn = document.getElementById('btn-reset-zoom');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    if (depthChart) depthChart.resetZoom();
-    if (ascentChart) ascentChart.resetZoom();
-  });
-}
-
 export function destroyCharts() {
   cancelLongPress();
   longPressActive = false;
@@ -484,4 +542,9 @@ export function destroyCharts() {
   currentDive = null;
   cursor1Idx = null;
   cursor2Idx = null;
+  allLabels = [];
+  allDepths = [];
+  allAscentMpm = [];
+  allAscentColors = [];
+  allAscentRates = [];
 }

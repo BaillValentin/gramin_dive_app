@@ -224,6 +224,20 @@ header h1 {
 
 .btn-small:active { background: #ffffff10; }
 
+/* Zoom controls */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+}
+
+.zoom-controls input[type="range"] {
+  flex: 1;
+  accent-color: var(--blue);
+  height: 4px;
+}
+
 /* Speed legend */
 #speed-legend {
   display: flex;
