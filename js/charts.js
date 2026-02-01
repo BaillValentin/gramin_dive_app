@@ -171,7 +171,7 @@ export function renderCharts(dive) {
         zoom: zoomOptions(() => ascentChart),
       },
       // Disable default chart.js touch handling for events — we manage it
-      events: ['mousemove', 'mouseout', 'click'],
+      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
     },
   });
 
@@ -212,7 +212,7 @@ export function renderCharts(dive) {
         tooltip: { enabled: false },
         zoom: zoomOptions(() => depthChart),
       },
-      events: ['mousemove', 'mouseout', 'click'],
+      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
     },
   });
 

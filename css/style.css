@@ -179,14 +179,14 @@ header h1 {
   position: relative;
   width: 100%;
   height: 250px;
-  touch-action: pan-y;  /* allow vertical scroll, block horizontal */
+  touch-action: manipulation;  /* allow scroll + pinch, block double-tap zoom */
   overflow: hidden;
 }
 
 .chart-container canvas {
   width: 100% !important;
   height: 100% !important;
-  touch-action: pan-y;
+  touch-action: manipulation;
 }
 
 /* Chart header */
