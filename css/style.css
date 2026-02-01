@@ -18,7 +18,9 @@ html, body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 header {
@@ -177,11 +179,14 @@ header h1 {
   position: relative;
   width: 100%;
   height: 250px;
+  touch-action: pan-y;  /* allow vertical scroll, block horizontal */
+  overflow: hidden;
 }
 
 .chart-container canvas {
   width: 100% !important;
   height: 100% !important;
+  touch-action: pan-y;
 }
 
 /* Chart header */
