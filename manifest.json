@@ -1,6 +1,6 @@
 {
-  "name": "Garmin Dive",
-  "short_name": "Dive",
+  "name": "Garmin Dive +",
+  "short_name": "Dive +",
   "description": "Visualiseur de plongées Garmin FIT",
   "start_url": "./index.html",
   "display": "standalone",
