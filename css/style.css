@@ -186,7 +186,6 @@ header h1 {
 .chart-container canvas {
   width: 100% !important;
   height: 100% !important;
-  touch-action: manipulation;
 }
 
 /* Chart header */
