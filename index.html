@@ -50,25 +50,10 @@
         <span class="legend-unit">m/min</span>
       </div>
     </div>
-
-    <!-- Mode selector -->
-    <div class="mode-bar">
-      <button class="mode-btn active" data-mode="zoom">Zoom</button>
-      <button class="mode-btn" data-mode="cursor1">1 Curseur</button>
-      <button class="mode-btn" data-mode="cursor2">2 Curseurs</button>
-    </div>
-
-    <!-- Zoom controls (visible only in zoom mode) -->
-    <div id="zoom-controls" class="zoom-controls">
-      <button id="btn-zoom-out" class="btn-small">&minus;</button>
-      <input type="range" id="zoom-slider" min="0" max="100" value="0">
-      <button id="btn-zoom-in" class="btn-small">+</button>
-      <button id="btn-zoom-reset" class="btn-small">Reset</button>
-    </div>
-
     <div class="card chart-card">
       <div class="chart-header">
         <h3>Vitesse de remontée</h3>
+        <button id="btn-reset-zoom" class="btn-small">Reset zoom</button>
       </div>
       <div class="chart-container">
         <canvas id="chart-ascent"></canvas>
@@ -82,13 +67,14 @@
         <span id="cursor-ascent-rate"></span>
       </div>
       <div id="cursor-dual" class="hidden">
-        <div class="dual-row">
+        <div class="dual-row-compact">
           <span id="dual-t1"></span>
           <span id="dual-d1"></span>
+          <span class="dual-sep">&rarr;</span>
           <span id="dual-t2"></span>
           <span id="dual-d2"></span>
         </div>
-        <div class="dual-row dual-delta">
+        <div class="dual-row-compact dual-delta">
           <span id="dual-dt"></span>
           <span id="dual-dd"></span>
           <span id="dual-speed"></span>
