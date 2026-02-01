@@ -35,6 +35,7 @@ let activeTouchChart = null;
 
 function speedColor(mpm) {
   if (mpm == null) return '#8899aa';
+  if (mpm < 0) return '#48bfe3';
   const abs = Math.abs(mpm);
   if (abs > 12) return '#ef476f';
   if (abs > 9) return '#ff6b35';
