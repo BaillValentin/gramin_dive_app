@@ -225,6 +225,35 @@ header h1 {
 
 .btn-small:active { background: #ffffff10; }
 
+/* Speed legend */
+#speed-legend {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: .7rem;
+  color: var(--text-dim);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-item i {
+  display: inline-block;
+  width: 12px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.legend-unit {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
 /* Cursor info */
 #cursor-info {
   text-align: center;

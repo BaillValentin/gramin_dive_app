@@ -508,16 +508,19 @@ function updateCursorInfo(sample) {
 function setupToggleColorSpeed(ascentRates) {
   const toggle = document.getElementById('toggle-color-speed');
   if (!toggle) return;
+  const legend = document.getElementById('speed-legend');
   toggle.addEventListener('change', () => {
     if (!depthChart) return;
     const ds = depthChart.data.datasets[0];
     if (toggle.checked) {
       ds.segment = buildSegmentColors(ascentRates);
       ds.borderWidth = 3;
+      if (legend) legend.classList.remove('hidden');
     } else {
       ds.segment = {};
       ds.borderColor = '#00b4d8';
       ds.borderWidth = 2;
+      if (legend) legend.classList.add('hidden');
     }
     depthChart.update();
   });
