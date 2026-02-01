@@ -179,7 +179,6 @@ header h1 {
   position: relative;
   width: 100%;
   height: 250px;
-  touch-action: manipulation;  /* allow scroll + pinch, block double-tap zoom */
   overflow: hidden;
 }
 
