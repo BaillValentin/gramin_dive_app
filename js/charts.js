@@ -1,6 +1,8 @@
 /**
  * Chart.js dive profile and ascent rate charts.
- * Interaction: swipe/pinch = pan/zoom, long-press = place cursor.
+ * Interaction: swipe/pinch = pan/zoom, long-press = temporary cursor.
+ * 1-finger long-press = single cursor (disappears on release).
+ * 2-finger long-press = dual cursor (disappears on release).
  * Synced tooltips between both charts.
  */
 
@@ -19,13 +21,13 @@ let cursor1Idx = null;
 let cursor2Idx = null;
 
 // Long-press detection
-const LONG_PRESS_MS = 400;
+const LONG_PRESS_MS = 350;
 const MOVE_THRESHOLD = 10;
 let longPressTimer = null;
 let touchStartX = 0;
 let touchStartY = 0;
-let longPressActive = false; // true once long-press fires
-let draggingCursor = false;  // dragging cursor after long-press
+let longPressActive = false;
+let activeTouchChart = null; // which chart canvas triggered the long-press
 
 function speedColor(mpm) {
   if (mpm == null) return '#8899aa';
@@ -53,7 +55,7 @@ const crosshairPlugin = {
     if (!chartArea) return;
     const { top, bottom } = chartArea;
 
-    // Hover crosshair
+    // Hover crosshair (from active elements)
     const actives = chart.getActiveElements();
     if (actives.length) {
       const x = actives[0].element.x;
@@ -76,13 +78,10 @@ const crosshairPlugin = {
 function drawCursorLine(chart, globalIdx, color) {
   const meta = chart.getDatasetMeta(0);
   if (!meta.data.length) return;
-
-  // Find pixel X for global index via scale
   const scale = chart.scales.x;
   const x = scale.getPixelForValue(globalIdx);
   const { left, right } = chart.chartArea;
   if (x < left || x > right) return;
-
   const { ctx, chartArea: { top, bottom } } = chart;
   ctx.save();
   ctx.beginPath();
@@ -97,7 +96,7 @@ function drawCursorLine(chart, globalIdx, color) {
 
 Chart.register(crosshairPlugin);
 
-// --- Get global data index from pixel X ---
+// --- Get data index from pixel X ---
 function getIndexFromX(chart, clientX) {
   const rect = chart.canvas.getBoundingClientRect();
   const x = clientX - rect.left;
@@ -164,6 +163,26 @@ function ascentTooltipConfig() {
   };
 }
 
+// --- Show synced tooltips on both charts at given index ---
+function showSyncedTooltips(idx) {
+  [depthChart, ascentChart].forEach(chart => {
+    if (!chart) return;
+    const el = [{ datasetIndex: 0, index: idx }];
+    chart.setActiveElements(el);
+    chart.tooltip.setActiveElements(el, { x: 0, y: 0 });
+    chart.update('none');
+  });
+}
+
+function hideSyncedTooltips() {
+  [depthChart, ascentChart].forEach(chart => {
+    if (!chart) return;
+    chart.setActiveElements([]);
+    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+    chart.update('none');
+  });
+}
+
 // --- Setup reset zoom button ---
 function setupResetZoom() {
   const btn = document.getElementById('btn-reset-zoom');
@@ -183,7 +202,7 @@ export function renderCharts(dive) {
   showSingleCursor();
   clearCursorDisplay();
 
-  allLabels = dive.samples.map((s, i) => i); // numeric indices for proper zoom
+  allLabels = dive.samples.map((s, i) => i);
   const displayLabels = dive.samples.map(s => {
     const m = Math.floor(s.elapsed / 60);
     const sec = s.elapsed % 60;
@@ -194,6 +213,21 @@ export function renderCharts(dive) {
   allAscentRates = dive.samples.map(s => s.ascentRate ?? null);
   allAscentMpm = allAscentRates.map(r => r != null ? r * 60 : null);
   allAscentColors = allAscentMpm.map(mpm => speedColor(mpm));
+
+  const xScaleConfig = (gridVisible) => ({
+    type: 'linear',
+    ticks: {
+      color: '#8899aa',
+      maxTicksLimit: 8,
+      callback: (val) => {
+        const i = Math.round(val);
+        return i >= 0 && i < displayLabels.length ? displayLabels[i] : '';
+      }
+    },
+    grid: gridVisible ? { color: '#ffffff10' } : { display: false },
+    min: 0,
+    max: allLabels.length - 1,
+  });
 
   // Depth chart
   const ctxDepth = document.getElementById('chart-depth').getContext('2d');
@@ -225,20 +259,7 @@ export function renderCharts(dive) {
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: { reverse: true, beginAtZero: true, ticks: { color: '#8899aa' }, grid: { color: '#ffffff10' } },
-        x: {
-          type: 'linear',
-          ticks: {
-            color: '#8899aa',
-            maxTicksLimit: 8,
-            callback: (val) => {
-              const i = Math.round(val);
-              return i >= 0 && i < displayLabels.length ? displayLabels[i] : '';
-            }
-          },
-          grid: { color: '#ffffff10' },
-          min: 0,
-          max: allLabels.length - 1,
-        },
+        x: xScaleConfig(true),
       },
       plugins: {
         legend: { display: false },
@@ -271,20 +292,7 @@ export function renderCharts(dive) {
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: { ticks: { color: '#8899aa' }, grid: { color: '#ffffff10' } },
-        x: {
-          type: 'linear',
-          ticks: {
-            color: '#8899aa',
-            maxTicksLimit: 8,
-            callback: (val) => {
-              const i = Math.round(val);
-              return i >= 0 && i < displayLabels.length ? displayLabels[i] : '';
-            }
-          },
-          grid: { display: false },
-          min: 0,
-          max: allLabels.length - 1,
-        },
+        x: xScaleConfig(false),
       },
       plugins: {
         legend: { display: false },
@@ -300,100 +308,136 @@ export function renderCharts(dive) {
   setupResetZoom();
 }
 
-// --- Touch: long-press for cursor, otherwise pan/zoom ---
+// --- Touch interaction ---
 function setupTouchInteraction(dive) {
   [depthChart, ascentChart].forEach(chart => {
     const canvas = chart.canvas;
 
     canvas.addEventListener('touchstart', e => {
-      // Multi-touch = pinch zoom, let plugin handle
-      if (e.touches.length > 1) {
+      if (e.touches.length === 2) {
+        // Two fingers down — check if it could be a dual-cursor long press
+        // Cancel any single-finger long press
         cancelLongPress();
+
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        touchStartX = (t0.clientX + t1.clientX) / 2;
+        touchStartY = (t0.clientY + t1.clientY) / 2;
+        longPressActive = false;
+        activeTouchChart = chart;
+
+        longPressTimer = setTimeout(() => {
+          longPressActive = true;
+          activeTouchChart = chart;
+
+          // Disable pan/zoom while in cursor mode
+          setPanEnabled(false);
+          setZoomEnabled(false);
+
+          const idx1 = getIndexFromX(chart, t0.clientX);
+          const idx2 = getIndexFromX(chart, t1.clientX);
+
+          if (idx1 != null && idx2 != null) {
+            cursor1Idx = Math.min(idx1, idx2);
+            cursor2Idx = Math.max(idx1, idx2);
+            updateDualCursorUI(dive);
+            updateCharts();
+          }
+
+          if (navigator.vibrate) navigator.vibrate(30);
+        }, LONG_PRESS_MS);
+
         return;
       }
 
-      const touch = e.touches[0];
-      touchStartX = touch.clientX;
-      touchStartY = touch.clientY;
-      longPressActive = false;
-      draggingCursor = false;
+      // Single touch
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        longPressActive = false;
+        activeTouchChart = chart;
 
-      longPressTimer = setTimeout(() => {
-        longPressActive = true;
-        draggingCursor = true;
+        longPressTimer = setTimeout(() => {
+          longPressActive = true;
+          activeTouchChart = chart;
 
-        // Disable pan while dragging cursor
-        setPanEnabled(false);
+          setPanEnabled(false);
 
-        // Place cursor
-        const idx = getIndexFromX(chart, touch.clientX);
-        if (idx != null) {
-          placeCursor(idx, dive);
-        }
+          const idx = getIndexFromX(chart, touch.clientX);
+          if (idx != null) {
+            cursor1Idx = idx;
+            cursor2Idx = null;
+            showSingleCursor();
+            updateCursorInfo(dive.samples[idx]);
+            showSyncedTooltips(idx);
+            updateCharts();
+          }
 
-        // Haptic feedback if available
-        if (navigator.vibrate) navigator.vibrate(30);
-      }, LONG_PRESS_MS);
+          if (navigator.vibrate) navigator.vibrate(30);
+        }, LONG_PRESS_MS);
+      }
     }, { passive: true });
 
     canvas.addEventListener('touchmove', e => {
-      if (e.touches.length > 1) {
-        cancelLongPress();
-        return;
-      }
-
-      const touch = e.touches[0];
-      const dx = Math.abs(touch.clientX - touchStartX);
-      const dy = Math.abs(touch.clientY - touchStartY);
-
-      if (!longPressActive && (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD)) {
-        // User is panning — cancel long-press
-        cancelLongPress();
-        return;
-      }
-
-      if (draggingCursor) {
-        e.preventDefault();
-        const idx = getIndexFromX(chart, touch.clientX);
-        if (idx != null) {
-          // If we have 2 cursors, move the nearest one
-          if (cursor1Idx != null && cursor2Idx != null) {
-            const d1 = Math.abs(idx - cursor1Idx);
-            const d2 = Math.abs(idx - cursor2Idx);
-            if (d1 <= d2) cursor1Idx = idx;
-            else cursor2Idx = idx;
-            updateDualCursorUI(dive);
-          } else {
-            cursor1Idx = idx;
-            updateCursorInfo(dive.samples[idx]);
+      if (!longPressActive) {
+        // Check if moved too much — cancel long press
+        if (e.touches.length >= 1) {
+          const touch = e.touches[0];
+          const dx = Math.abs(touch.clientX - touchStartX);
+          const dy = Math.abs(touch.clientY - touchStartY);
+          if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
+            cancelLongPress();
           }
-          syncActiveOnBoth(idx);
+        }
+        return;
+      }
+
+      // Long press active — drag cursor(s)
+      e.preventDefault();
+
+      if (cursor1Idx != null && cursor2Idx != null && e.touches.length === 2) {
+        // Dual cursor drag
+        const idx1 = getIndexFromX(activeTouchChart, e.touches[0].clientX);
+        const idx2 = getIndexFromX(activeTouchChart, e.touches[1].clientX);
+        if (idx1 != null) cursor1Idx = Math.min(idx1, idx2 ?? idx1);
+        if (idx2 != null) cursor2Idx = Math.max(idx1 ?? idx2, idx2);
+        updateDualCursorUI(dive);
+        updateCharts();
+      } else if (cursor1Idx != null && cursor2Idx == null && e.touches.length >= 1) {
+        // Single cursor drag
+        const idx = getIndexFromX(activeTouchChart, e.touches[0].clientX);
+        if (idx != null) {
+          cursor1Idx = idx;
+          updateCursorInfo(dive.samples[idx]);
+          showSyncedTooltips(idx);
           updateCharts();
         }
       }
     }, { passive: false });
 
-    canvas.addEventListener('touchend', () => {
-      if (longPressTimer && !longPressActive) {
-        // Short tap — do nothing special (let zoom plugin handle tap if needed)
+    canvas.addEventListener('touchend', e => {
+      // If long press was never triggered, just cancel timer
+      if (!longPressActive) {
         cancelLongPress();
+        return;
       }
 
-      if (draggingCursor) {
-        draggingCursor = false;
-        // Re-enable pan
+      // If all fingers lifted, clear everything
+      if (e.touches.length === 0) {
+        cursor1Idx = null;
+        cursor2Idx = null;
+        showSingleCursor();
+        clearCursorDisplay();
+        hideSyncedTooltips();
+        updateCharts();
+
+        longPressActive = false;
+        activeTouchChart = null;
         setPanEnabled(true);
+        setZoomEnabled(true);
       }
-
-      longPressTimer = null;
-      longPressActive = false;
-      clearActiveOnBoth();
     }, { passive: true });
-  });
-
-  // Tap on cursor info bar to clear cursors
-  document.getElementById('cursor-info').addEventListener('click', () => {
-    clearCursors();
   });
 }
 
@@ -412,28 +456,16 @@ function setPanEnabled(enabled) {
   });
 }
 
-function placeCursor(idx, dive) {
-  if (cursor1Idx == null) {
-    // First cursor
-    cursor1Idx = idx;
-    showSingleCursor();
-    updateCursorInfo(dive.samples[idx]);
-  } else if (cursor2Idx == null) {
-    // Second cursor
-    cursor2Idx = idx;
-    updateDualCursorUI(dive);
-  } else {
-    // Reset to new first cursor
-    cursor1Idx = idx;
-    cursor2Idx = null;
-    showSingleCursor();
-    updateCursorInfo(dive.samples[idx]);
-  }
-  syncActiveOnBoth(idx);
-  updateCharts();
+function setZoomEnabled(enabled) {
+  [depthChart, ascentChart].forEach(c => {
+    if (!c) return;
+    c.options.plugins.zoom.zoom.pinch.enabled = enabled;
+    c.options.plugins.zoom.zoom.wheel.enabled = enabled;
+    c.update('none');
+  });
 }
 
-// --- Mouse (desktop) ---
+// --- Mouse (desktop): synced tooltips on hover ---
 function setupMouseInteraction(dive) {
   [depthChart, ascentChart].forEach(source => {
     const canvas = source.canvas;
@@ -441,45 +473,22 @@ function setupMouseInteraction(dive) {
     canvas.addEventListener('mousemove', e => {
       const idx = getIndexFromX(source, e.clientX);
       if (idx != null) {
-        syncActiveOnBoth(idx);
-        if (cursor1Idx == null) updateCursorInfo(dive.samples[idx]);
+        showSyncedTooltips(idx);
+        updateCursorInfo(dive.samples[idx]);
       }
     });
 
-    canvas.addEventListener('mouseleave', () => clearActiveOnBoth());
-
-    canvas.addEventListener('click', e => {
-      const idx = getIndexFromX(source, e.clientX);
-      if (idx == null) return;
-      placeCursor(idx, dive);
+    canvas.addEventListener('mouseleave', () => {
+      hideSyncedTooltips();
+      clearCursorDisplay();
     });
-
   });
 }
 
 // --- Helpers ---
-function syncActiveOnBoth(idx) {
-  const el = [{ datasetIndex: 0, index: idx }];
-  if (depthChart) { depthChart.setActiveElements(el); depthChart.update('none'); }
-  if (ascentChart) { ascentChart.setActiveElements(el); ascentChart.update('none'); }
-}
-
-function clearActiveOnBoth() {
-  if (depthChart) { depthChart.setActiveElements([]); depthChart.update('none'); }
-  if (ascentChart) { ascentChart.setActiveElements([]); ascentChart.update('none'); }
-}
-
 function updateCharts() {
   if (depthChart) depthChart.update('none');
   if (ascentChart) ascentChart.update('none');
-}
-
-function clearCursors() {
-  cursor1Idx = null;
-  cursor2Idx = null;
-  showSingleCursor();
-  clearCursorDisplay();
-  updateCharts();
 }
 
 function clearCursorDisplay() {
