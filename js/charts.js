@@ -1,7 +1,7 @@
 /**
  * Chart.js dive profile and ascent rate charts.
- * Interaction modes: "zoom" (scroll data), "cursor1" (single cursor),
- * "cursor2" (two cursors). No external plugins.
+ * Modes: "zoom" (pinch/pan + buttons), "cursor1", "cursor2".
+ * Uses chartjs-plugin-zoom + Hammer.js for pinch zoom.
  */
 
 let depthChart = null;
@@ -15,7 +15,7 @@ let allAscentMpm = [];
 let allAscentColors = [];
 let allAscentRates = [];
 
-// Zoom state
+// Zoom state (for manual buttons/slider)
 let zoomStart = 0;
 let zoomEnd = 0;
 
@@ -23,7 +23,7 @@ let zoomEnd = 0;
 let cursor1Idx = null;
 let cursor2Idx = null;
 
-// Current interaction mode: "zoom", "cursor1", "cursor2"
+// Current interaction mode
 let interactionMode = 'zoom';
 
 function speedColor(mpm) {
@@ -103,7 +103,74 @@ function getGlobalIndexFromX(chart, clientX) {
   return zoomStart + localIdx;
 }
 
-// --- Zoom via data slicing ---
+// --- Zoom plugin options (synced between charts) ---
+function zoomPluginOptions(otherChartGetter) {
+  return {
+    zoom: {
+      wheel: { enabled: true },
+      pinch: { enabled: true },
+      mode: 'x',
+      onZoom: ({ chart }) => syncZoom(chart, otherChartGetter()),
+    },
+    pan: {
+      enabled: true,
+      mode: 'x',
+      onPan: ({ chart }) => syncZoom(chart, otherChartGetter()),
+    },
+  };
+}
+
+function syncZoom(source, target) {
+  if (!target) return;
+  target.options.scales.x.min = source.options.scales.x.min;
+  target.options.scales.x.max = source.options.scales.x.max;
+  target.update('none');
+}
+
+// --- Enable/disable zoom plugin based on mode ---
+function setZoomEnabled(enabled) {
+  [depthChart, ascentChart].forEach(chart => {
+    if (!chart) return;
+    chart.options.plugins.zoom.zoom.pinch.enabled = enabled;
+    chart.options.plugins.zoom.zoom.wheel.enabled = enabled;
+    chart.options.plugins.zoom.pan.enabled = enabled;
+    chart.update('none');
+  });
+}
+
+// --- Tooltip config ---
+function depthTooltipConfig() {
+  return {
+    enabled: true,
+    backgroundColor: '#16213e',
+    titleColor: '#00b4d8',
+    bodyColor: '#e0e0e0',
+    borderColor: '#00b4d8',
+    borderWidth: 1,
+    callbacks: {
+      label: ctx => `${ctx.parsed.y?.toFixed(1)} m`,
+    },
+  };
+}
+
+function ascentTooltipConfig() {
+  return {
+    enabled: true,
+    backgroundColor: '#16213e',
+    bodyColor: '#e0e0e0',
+    borderColor: '#ff6b35',
+    borderWidth: 1,
+    callbacks: {
+      label: ctx => {
+        const v = ctx.parsed.y;
+        if (v == null) return '';
+        return `${v.toFixed(1)} m/min`;
+      },
+    },
+  };
+}
+
+// --- Zoom via data slicing (for buttons/slider) ---
 function applyZoom() {
   if (!depthChart || !ascentChart) return;
 
@@ -162,6 +229,9 @@ function setupZoomControls() {
     zoomStart = 0;
     zoomEnd = allLabels.length;
     applyZoom();
+    // Also reset plugin zoom
+    if (depthChart) depthChart.resetZoom();
+    if (ascentChart) ascentChart.resetZoom();
   });
 }
 
@@ -178,8 +248,10 @@ function setupModeBar() {
 
       if (interactionMode === 'zoom') {
         zoomCtrl.classList.remove('hidden-soft');
+        setZoomEnabled(true);
       } else {
         zoomCtrl.classList.add('hidden-soft');
+        setZoomEnabled(false);
       }
 
       clearCursors();
@@ -249,7 +321,11 @@ export function renderCharts(dive) {
         y: { reverse: true, beginAtZero: true, ticks: { color: '#8899aa' }, grid: { color: '#ffffff10' } },
         x: { ticks: { color: '#8899aa', maxTicksLimit: 8 }, grid: { color: '#ffffff10' } },
       },
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      plugins: {
+        legend: { display: false },
+        tooltip: depthTooltipConfig(),
+        zoom: zoomPluginOptions(() => ascentChart),
+      },
     },
   });
 
@@ -278,7 +354,11 @@ export function renderCharts(dive) {
         y: { ticks: { color: '#8899aa' }, grid: { color: '#ffffff10' } },
         x: { ticks: { color: '#8899aa', maxTicksLimit: 8 }, grid: { display: false } },
       },
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      plugins: {
+        legend: { display: false },
+        tooltip: ascentTooltipConfig(),
+        zoom: zoomPluginOptions(() => depthChart),
+      },
     },
   });
 
@@ -292,6 +372,7 @@ export function renderCharts(dive) {
 // --- Mouse (desktop) ---
 function setupMouseSync(dive) {
   [depthChart, ascentChart].forEach(source => {
+    const target = source === depthChart ? ascentChart : depthChart;
     const canvas = source.canvas;
 
     canvas.addEventListener('mousemove', e => {
@@ -332,13 +413,13 @@ function setupMouseSync(dive) {
   });
 }
 
-// --- Touch interaction (mode-based, no long press) ---
+// --- Touch interaction (mode-based) ---
 function setupTouchInteraction(dive) {
   [depthChart, ascentChart].forEach(chart => {
     const canvas = chart.canvas;
 
     canvas.addEventListener('touchstart', e => {
-      if (interactionMode === 'zoom') return;
+      if (interactionMode === 'zoom') return; // let zoom plugin handle it
 
       if (interactionMode === 'cursor1' && e.touches.length === 1) {
         e.preventDefault();
@@ -378,7 +459,7 @@ function setupTouchInteraction(dive) {
     }, { passive: false });
 
     canvas.addEventListener('touchmove', e => {
-      if (interactionMode === 'zoom') return;
+      if (interactionMode === 'zoom') return; // let zoom plugin handle it
       e.preventDefault();
 
       if (interactionMode === 'cursor1' && e.touches.length >= 1) {
