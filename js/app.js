@@ -208,3 +208,13 @@ init();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+// --- Version display ---
+caches.keys().then(keys => {
+  const current = keys.find(k => k.startsWith('garmin-dive-v'));
+  if (current) {
+    const ver = current.replace('garmin-dive-', '');
+    const el = document.getElementById('app-version');
+    if (el) el.textContent = `Dive + ${ver}`;
+  }
+}).catch(() => {});
