@@ -1,4 +1,4 @@
-const CACHE_NAME = 'garmin-dive-v7';
+const CACHE_NAME = 'garmin-dive-v8';
 const ASSETS = [
   './',
   './index.html',

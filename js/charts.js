@@ -21,6 +21,9 @@ let allDisplayLabels = [];
 let cursor1Idx = null;
 let cursor2Idx = null;
 
+// Color-speed toggle state
+let colorSpeedEnabled = false;
+
 // Long-press detection
 const LONG_PRESS_MS = 350;
 const MOVE_THRESHOLD = 10;
@@ -28,7 +31,7 @@ let longPressTimer = null;
 let touchStartX = 0;
 let touchStartY = 0;
 let longPressActive = false;
-let activeTouchChart = null; // which chart canvas triggered the long-press
+let activeTouchChart = null;
 
 function speedColor(mpm) {
   if (mpm == null) return '#8899aa';
@@ -56,7 +59,6 @@ const crosshairPlugin = {
     if (!chartArea) return;
     const { top, bottom } = chartArea;
 
-    // Hover crosshair (from active elements)
     const actives = chart.getActiveElements();
     if (actives.length) {
       const x = actives[0].element.x;
@@ -146,7 +148,17 @@ function depthTooltipConfig() {
         const i = Math.round(items[0]?.parsed?.x ?? 0);
         return allDisplayLabels[i] ?? '';
       },
-      label: ctx => `${ctx.parsed.y?.toFixed(1)} m`,
+      label: ctx => {
+        const i = Math.round(ctx.parsed.x);
+        let line = `${ctx.parsed.y?.toFixed(1)} m`;
+        if (colorSpeedEnabled) {
+          const mpm = allAscentMpm[i];
+          if (mpm != null) {
+            line += `  |  ${mpm.toFixed(1)} m/min`;
+          }
+        }
+        return line;
+      },
     },
   };
 }
@@ -208,6 +220,7 @@ export function renderCharts(dive) {
   currentDive = dive;
   cursor1Idx = null;
   cursor2Idx = null;
+  colorSpeedEnabled = false;
   showSingleCursor();
   clearCursorDisplay();
 
@@ -225,6 +238,7 @@ export function renderCharts(dive) {
 
   const xScaleConfig = (gridVisible) => ({
     type: 'linear',
+    offset: false,
     ticks: {
       color: '#8899aa',
       maxTicksLimit: 8,
@@ -238,7 +252,7 @@ export function renderCharts(dive) {
     max: allLabels.length - 1,
   });
 
-  // Depth chart
+  // Depth chart — events: only mouse (touch handled manually)
   const ctxDepth = document.getElementById('chart-depth').getContext('2d');
   const gradient = ctxDepth.createLinearGradient(0, 0, 0, 190);
   gradient.addColorStop(0, 'rgba(0, 180, 216, 0.1)');
@@ -265,6 +279,7 @@ export function renderCharts(dive) {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
+      events: ['mousemove', 'mouseout'],
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: { reverse: true, beginAtZero: true, ticks: { color: '#8899aa' }, grid: { color: '#ffffff10' } },
@@ -298,6 +313,7 @@ export function renderCharts(dive) {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
+      events: ['mousemove', 'mouseout'],
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: { ticks: { color: '#8899aa' }, grid: { color: '#ffffff10' } },
@@ -324,8 +340,6 @@ function setupTouchInteraction(dive) {
 
     canvas.addEventListener('touchstart', e => {
       if (e.touches.length === 2) {
-        // Two fingers down — check if it could be a dual-cursor long press
-        // Cancel any single-finger long press
         cancelLongPress();
 
         const t0 = e.touches[0];
@@ -339,7 +353,6 @@ function setupTouchInteraction(dive) {
           longPressActive = true;
           activeTouchChart = chart;
 
-          // Disable pan/zoom while in cursor mode
           setPanEnabled(false);
           setZoomEnabled(false);
 
@@ -359,7 +372,6 @@ function setupTouchInteraction(dive) {
         return;
       }
 
-      // Single touch
       if (e.touches.length === 1) {
         const touch = e.touches[0];
         touchStartX = touch.clientX;
@@ -390,7 +402,6 @@ function setupTouchInteraction(dive) {
 
     canvas.addEventListener('touchmove', e => {
       if (!longPressActive) {
-        // Check if moved too much — cancel long press
         if (e.touches.length >= 1) {
           const touch = e.touches[0];
           const dx = Math.abs(touch.clientX - touchStartX);
@@ -402,11 +413,9 @@ function setupTouchInteraction(dive) {
         return;
       }
 
-      // Long press active — drag cursor(s)
       e.preventDefault();
 
       if (cursor1Idx != null && cursor2Idx != null && e.touches.length === 2) {
-        // Dual cursor drag
         const idx1 = getIndexFromX(activeTouchChart, e.touches[0].clientX);
         const idx2 = getIndexFromX(activeTouchChart, e.touches[1].clientX);
         if (idx1 != null) cursor1Idx = Math.min(idx1, idx2 ?? idx1);
@@ -414,7 +423,6 @@ function setupTouchInteraction(dive) {
         updateDualCursorUI(dive);
         updateCharts();
       } else if (cursor1Idx != null && cursor2Idx == null && e.touches.length >= 1) {
-        // Single cursor drag
         const idx = getIndexFromX(activeTouchChart, e.touches[0].clientX);
         if (idx != null) {
           cursor1Idx = idx;
@@ -426,13 +434,11 @@ function setupTouchInteraction(dive) {
     }, { passive: false });
 
     canvas.addEventListener('touchend', e => {
-      // If long press was never triggered, just cancel timer
       if (!longPressActive) {
         cancelLongPress();
         return;
       }
 
-      // If all fingers lifted, clear everything
       if (e.touches.length === 0) {
         cursor1Idx = null;
         cursor2Idx = null;
@@ -568,8 +574,9 @@ function setupToggleColorSpeed() {
   const legend = document.getElementById('speed-legend');
   toggle.addEventListener('change', () => {
     if (!depthChart) return;
+    colorSpeedEnabled = toggle.checked;
     const ds = depthChart.data.datasets[0];
-    if (toggle.checked) {
+    if (colorSpeedEnabled) {
       ds.segment = buildSegmentColors();
       ds.borderWidth = 3;
       if (legend) legend.classList.remove('hidden');
@@ -589,6 +596,7 @@ export function destroyCharts() {
   currentDive = null;
   cursor1Idx = null;
   cursor2Idx = null;
+  colorSpeedEnabled = false;
   allLabels = [];
   allDepths = [];
   allAscentMpm = [];
