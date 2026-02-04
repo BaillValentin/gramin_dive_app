@@ -210,8 +210,14 @@ function setupResetZoom() {
   const btn = document.getElementById('btn-reset-zoom');
   if (!btn) return;
   btn.addEventListener('click', () => {
-    if (depthChart) depthChart.resetZoom();
-    if (ascentChart) ascentChart.resetZoom();
+    if (depthChart) {
+      depthChart.resetZoom();
+      syncZoom(depthChart, ascentChart);
+    }
+    if (ascentChart) {
+      ascentChart.resetZoom();
+      syncZoom(ascentChart, depthChart);
+    }
   });
 }
 
@@ -579,7 +585,7 @@ function setupToggleColorSpeed() {
     const ds = depthChart.data.datasets[0];
     if (colorSpeedEnabled) {
       ds.segment = buildSegmentColors();
-      ds.borderWidth = 3;
+      ds.borderWidth = 2;
       if (legend) legend.classList.remove('hidden');
     } else {
       ds.segment = {};
