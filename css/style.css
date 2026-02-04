@@ -263,8 +263,8 @@ header h1 {
 }
 
 #cursor-single {
-  display: flex;
-  justify-content: space-around;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
 }
 
 #cursor-single span {
