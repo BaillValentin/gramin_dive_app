@@ -82,7 +82,7 @@ function showList() {
   viewList.classList.remove('hidden');
   viewDetail.classList.add('hidden');
   btnBack.classList.add('hidden');
-  headerTitle.textContent = 'Garmin Dive';
+  headerTitle.textContent = 'Garmin Dive +';
   destroyCharts();
   currentDive = null;
   renderDiveList();
