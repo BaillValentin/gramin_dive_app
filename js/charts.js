@@ -27,6 +27,9 @@ let colorSpeedEnabled = true;
 // Hide descent toggle state
 let hideDescentEnabled = false;
 
+// Smoothing factor (in seconds/samples)
+let smoothFactor = 1;
+
 // Long-press detection
 const LONG_PRESS_MS = 350;
 const MOVE_THRESHOLD = 10;
@@ -232,6 +235,7 @@ export function renderCharts(dive) {
   cursor2Idx = null;
   colorSpeedEnabled = true;
   hideDescentEnabled = false;
+  smoothFactor = 1;
   showSingleCursor();
   clearCursorDisplay();
 
@@ -342,6 +346,13 @@ export function renderCharts(dive) {
   setupMouseInteraction(dive);
   setupToggleHideDescent();
   setupResetZoom();
+  setupSmoothSettings();
+
+  // Reset smooth slider UI
+  const slider = document.getElementById('smooth-slider');
+  const valueSpan = document.getElementById('smooth-value');
+  if (slider) slider.value = 1;
+  if (valueSpan) valueSpan.textContent = '1';
 }
 
 // --- Touch interaction ---
@@ -602,6 +613,71 @@ function updateAscentChartData() {
   }
 }
 
+// --- Smooth ascent rates ---
+function computeSmoothedRates(samples, factor) {
+  const half = Math.floor(factor / 2);
+  return samples.map((s, i) => {
+    const startIdx = Math.max(0, i - half);
+    const endIdx = Math.min(samples.length - 1, i + half);
+    const s1 = samples[startIdx];
+    const s2 = samples[endIdx];
+    if (s1.depth == null || s2.depth == null) return null;
+    const dt = s2.elapsed - s1.elapsed;
+    if (dt <= 0) return null;
+    return (s1.depth - s2.depth) / dt;
+  });
+}
+
+function applySmoothing() {
+  if (!currentDive) return;
+  if (smoothFactor <= 1) {
+    allAscentRates = currentDive.samples.map(s => s.ascentRate ?? null);
+  } else {
+    allAscentRates = computeSmoothedRates(currentDive.samples, smoothFactor);
+  }
+  allAscentMpm = allAscentRates.map(r => r != null ? r * 60 : null);
+  allAscentColors = allAscentMpm.map(mpm => speedColor(mpm));
+
+  // Update depth chart segment colors
+  if (depthChart) {
+    depthChart.data.datasets[0].segment = buildSegmentColors();
+    depthChart.update('none');
+  }
+
+  // Update ascent chart
+  updateAscentChartData();
+  if (ascentChart) ascentChart.update();
+}
+
+// --- Setup smooth settings ---
+function setupSmoothSettings() {
+  const btn = document.getElementById('btn-smooth-settings');
+  const popup = document.getElementById('smooth-popup');
+  const slider = document.getElementById('smooth-slider');
+  const valueSpan = document.getElementById('smooth-value');
+
+  if (!btn || !popup || !slider) return;
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    popup.classList.toggle('hidden');
+    btn.classList.toggle('active', !popup.classList.contains('hidden'));
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!popup.contains(e.target) && e.target !== btn) {
+      popup.classList.add('hidden');
+      btn.classList.remove('active');
+    }
+  });
+
+  slider.addEventListener('input', () => {
+    smoothFactor = parseInt(slider.value, 10);
+    valueSpan.textContent = smoothFactor;
+    applySmoothing();
+  });
+}
+
 export function destroyCharts() {
   if (depthChart) { depthChart.destroy(); depthChart = null; }
   if (ascentChart) { ascentChart.destroy(); ascentChart = null; }
@@ -610,6 +686,7 @@ export function destroyCharts() {
   cursor2Idx = null;
   colorSpeedEnabled = true;
   hideDescentEnabled = false;
+  smoothFactor = 1;
   allLabels = [];
   allDepths = [];
   allAscentMpm = [];
