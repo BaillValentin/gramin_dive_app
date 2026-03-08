@@ -211,6 +211,64 @@ header h1 {
   color: var(--text-dim);
 }
 
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.smooth-settings {
+  position: relative;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color .2s, background .2s;
+}
+
+.btn-icon:hover, .btn-icon.active {
+  color: var(--blue);
+  background: #ffffff10;
+}
+
+.smooth-popup {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: var(--bg);
+  border: 1px solid var(--text-dim);
+  border-radius: 8px;
+  padding: 10px 12px;
+  z-index: 20;
+  min-width: 140px;
+}
+
+.smooth-popup label {
+  display: block;
+  font-size: .7rem;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.smooth-popup #smooth-value {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.smooth-popup input[type="range"] {
+  width: 100%;
+  accent-color: var(--blue);
+}
+
 .btn-small {
   background: var(--bg);
   color: var(--text-dim);
