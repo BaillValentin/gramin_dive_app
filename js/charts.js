@@ -21,8 +21,11 @@ let allDisplayLabels = [];
 let cursor1Idx = null;
 let cursor2Idx = null;
 
-// Color-speed toggle state
-let colorSpeedEnabled = false;
+// Color-speed always enabled
+let colorSpeedEnabled = true;
+
+// Hide descent toggle state
+let hideDescentEnabled = false;
 
 // Long-press detection
 const LONG_PRESS_MS = 350;
@@ -227,7 +230,8 @@ export function renderCharts(dive) {
   currentDive = dive;
   cursor1Idx = null;
   cursor2Idx = null;
-  colorSpeedEnabled = false;
+  colorSpeedEnabled = true;
+  hideDescentEnabled = false;
   showSingleCursor();
   clearCursorDisplay();
 
@@ -274,12 +278,12 @@ export function renderCharts(dive) {
         data: allDepths,
         borderColor: '#00b4d8',
         backgroundColor: gradient,
-        borderWidth: 2,
+        borderWidth: 3,
         fill: true,
         tension: 0.2,
         pointRadius: 0,
         pointHitRadius: 8,
-        segment: {},
+        segment: buildSegmentColors(),
       }]
     },
     options: {
@@ -336,7 +340,7 @@ export function renderCharts(dive) {
 
   setupTouchInteraction(dive);
   setupMouseInteraction(dive);
-  setupToggleColorSpeed();
+  setupToggleHideDescent();
   setupResetZoom();
 }
 
@@ -574,27 +578,28 @@ function updateCursorInfo(sample) {
     `<small>Vitesse</small>${sample.ascentRate != null ? (sample.ascentRate * 60).toFixed(1) + ' m/min' : '—'}`;
 }
 
-// --- Toggle color-by-speed ---
-function setupToggleColorSpeed() {
-  const toggle = document.getElementById('toggle-color-speed');
+// --- Toggle hide descent speeds ---
+function setupToggleHideDescent() {
+  const toggle = document.getElementById('toggle-hide-descent');
   if (!toggle) return;
-  const legend = document.getElementById('speed-legend');
   toggle.addEventListener('change', () => {
-    if (!depthChart) return;
-    colorSpeedEnabled = toggle.checked;
-    const ds = depthChart.data.datasets[0];
-    if (colorSpeedEnabled) {
-      ds.segment = buildSegmentColors();
-      ds.borderWidth = 2;
-      if (legend) legend.classList.remove('hidden');
-    } else {
-      ds.segment = {};
-      ds.borderColor = '#00b4d8';
-      ds.borderWidth = 2;
-      if (legend) legend.classList.add('hidden');
-    }
-    depthChart.update();
+    if (!ascentChart) return;
+    hideDescentEnabled = toggle.checked;
+    updateAscentChartData();
+    ascentChart.update();
   });
+}
+
+function updateAscentChartData() {
+  if (!ascentChart) return;
+  const ds = ascentChart.data.datasets[0];
+  if (hideDescentEnabled) {
+    ds.data = allAscentMpm.map(v => (v != null && v < 0) ? null : v);
+    ds.backgroundColor = allAscentMpm.map((v, i) => (v != null && v < 0) ? 'transparent' : allAscentColors[i]);
+  } else {
+    ds.data = allAscentMpm;
+    ds.backgroundColor = allAscentColors;
+  }
 }
 
 export function destroyCharts() {
@@ -603,7 +608,8 @@ export function destroyCharts() {
   currentDive = null;
   cursor1Idx = null;
   cursor2Idx = null;
-  colorSpeedEnabled = false;
+  colorSpeedEnabled = true;
+  hideDescentEnabled = false;
   allLabels = [];
   allDepths = [];
   allAscentMpm = [];
